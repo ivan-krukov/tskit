@@ -49,6 +49,7 @@ attr_options = {"slots": True, "frozen": True, "auto_attribs": True}
 class IndividualTableRow:
     flags: int
     location: np.ndarray
+    parents: np.ndarray
     metadata: bytes
 
     def __eq__(self, other):
@@ -59,6 +60,7 @@ class IndividualTableRow:
                 (
                     self.flags == other.flags,
                     np.array_equal(self.location, other.location),
+                    np.array_equal(self.parents, other.parents),
                     self.metadata == other.metadata,
                 )
             )
@@ -464,6 +466,8 @@ class IndividualTable(BaseTable, MetadataMixin):
         "flags",
         "location",
         "location_offset",
+        "parents",
+        "parents_offset",
         "metadata",
         "metadata_offset",
     ]
@@ -476,8 +480,9 @@ class IndividualTable(BaseTable, MetadataMixin):
     def _text_header_and_rows(self, limit=None):
         flags = self.flags
         location = util.unpack_arrays(self.location, self.location_offset)
+        parents = util.unpack_arrays(self.parents, self.parents_offset)
         metadata = util.unpack_bytes(self.metadata, self.metadata_offset)
-        headers = ("id", "flags", "location", "metadata")
+        headers = ("id", "flags", "location", "parents", "metadata")
         rows = []
         if limit is None or self.num_rows <= limit:
             indexes = range(self.num_rows)
@@ -493,12 +498,15 @@ class IndividualTable(BaseTable, MetadataMixin):
             else:
                 md = base64.b64encode(metadata[j]).decode("utf8")
                 location_str = ",".join(map(str, location[j]))
+                parents_str = ",".join(map(str, parents[j]))
                 rows.append(
-                    "{}\t{}\t{}\t{}".format(j, flags[j], location_str, md).split("\t")
+                    "{}\t{}\t{}\t{}\t{}".format(
+                        j, flags[j], location_str, parents_str, md
+                    ).split("\t")
                 )
         return headers, rows
 
-    def add_row(self, flags=0, location=None, metadata=None):
+    def add_row(self, flags=0, location=None, parents=None, metadata=None):
         """
         Adds a new row to this :class:`IndividualTable` and returns the ID of the
         corresponding individual. Metadata, if specified, will be validated and encoded
@@ -518,13 +526,17 @@ class IndividualTable(BaseTable, MetadataMixin):
         if metadata is None:
             metadata = self.metadata_schema.empty_value
         metadata = self.metadata_schema.validate_and_encode_row(metadata)
-        return self.ll_table.add_row(flags=flags, location=location, metadata=metadata)
+        return self.ll_table.add_row(
+            flags=flags, location=location, parents=parents, metadata=metadata
+        )
 
     def set_columns(
         self,
         flags=None,
         location=None,
         location_offset=None,
+        parents=None,
+        parents_offset=None,
         metadata=None,
         metadata_offset=None,
         metadata_schema=None,
@@ -565,6 +577,8 @@ class IndividualTable(BaseTable, MetadataMixin):
                 flags=flags,
                 location=location,
                 location_offset=location_offset,
+                parents=parents,
+                parents_offset=parents_offset,
                 metadata=metadata,
                 metadata_offset=metadata_offset,
                 metadata_schema=metadata_schema,
@@ -576,6 +590,8 @@ class IndividualTable(BaseTable, MetadataMixin):
         flags=None,
         location=None,
         location_offset=None,
+        parents=None,
+        parents_offset=None,
         metadata=None,
         metadata_offset=None,
     ):
@@ -613,6 +629,8 @@ class IndividualTable(BaseTable, MetadataMixin):
                 flags=flags,
                 location=location,
                 location_offset=location_offset,
+                parents=parents,
+                parents_offset=parents_offset,
                 metadata=metadata,
                 metadata_offset=metadata_offset,
             )
