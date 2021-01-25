@@ -341,7 +341,7 @@ make_individual_row(const tsk_individual_t *r)
     PyObject *metadata = make_metadata(r->metadata, (Py_ssize_t) r->metadata_length);
     PyArrayObject *location = NULL;
     PyArrayObject *parents = NULL;
-    npy_intp dims, nparents;
+    npy_intp dims;
 
     dims = (npy_intp) r->location_length;
     location = (PyArrayObject *) PyArray_SimpleNew(1, &dims, NPY_FLOAT64);
@@ -349,8 +349,8 @@ make_individual_row(const tsk_individual_t *r)
         goto out;
     }
     memcpy(PyArray_DATA(location), r->location, r->location_length * sizeof(double));
-    nparents = (npy_intp) r->parents_length;
-    parents = (PyArrayObject *) PyArray_SimpleNew(1, &nparents, NPY_INT32);
+    dims = (npy_intp) r->parents_length;
+    parents = (PyArrayObject *) PyArray_SimpleNew(1, &dims, NPY_INT32);
     if (metadata == NULL || parents == NULL) {
         goto out;
     }
