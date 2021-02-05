@@ -363,7 +363,8 @@ class BaseTable:
                 <style scoped="">
                     .tskit-table tbody tr th:only-of-type {{vertical-align: middle;}}
                     .tskit-table tbody tr th {{vertical-align: top;}}
-                    .tskit-table tbody td {{text-align: right;}}
+                    .tskit-table tbody td {{text-align: right;padding: 0.5em 0.5em;}}
+                    .tskit-table tbody th {{padding: 0.5em 0.5em;}}
                 </style>
                 <table border="1" class="tskit-table">
                     <thead>
@@ -413,8 +414,12 @@ class MetadataMixin:
 
     @metadata_schema.setter
     def metadata_schema(self, schema: metadata.MetadataSchema) -> None:
+        if not isinstance(schema, metadata.MetadataSchema):
+            raise TypeError(
+                "Only instances of tskit.MetadataSchema can be assigned to "
+                f"metadata_schema, not {type(schema)}"
+            )
         self.ll_table.metadata_schema = repr(schema)
-        self._update_metadata_schema_cache_from_ll()
         self._update_metadata_schema_cache_from_ll()
 
     def decode_row(self, row: Tuple[Any]) -> Tuple:
@@ -452,6 +457,12 @@ class IndividualTable(BaseTable, MetadataMixin):
     :ivar location_offset: The array of offsets into the location column. See
         :ref:`sec_encoding_ragged_columns` for more details.
     :vartype location_offset: numpy.ndarray, dtype=np.uint32
+    :ivar parents: The flattened array of parent individual ids. See
+        :ref:`sec_encoding_ragged_columns` for more details.
+    :vartype parents: numpy.ndarray, dtype=np.int32
+    :ivar parents_offset: The array of offsets into the parents column. See
+        :ref:`sec_encoding_ragged_columns` for more details.
+    :vartype parents_offset: numpy.ndarray, dtype=np.uint32
     :ivar metadata: The flattened array of binary metadata values. See
         :ref:`sec_tables_api_binary_columns` for more details.
     :vartype metadata: numpy.ndarray, dtype=np.int8
@@ -517,6 +528,8 @@ class IndividualTable(BaseTable, MetadataMixin):
         :param array-like location: A list of numeric values or one-dimensional numpy
             array describing the location of this individual. If not specified
             or None, a zero-dimensional location is stored.
+        :param array-like parents: A list or array of ids of parent individuals. If not
+            specified an empty array is stored.
         :param object metadata: Any object that is valid metadata for the table's schema.
             Defaults to the default metadata value for the table's schema. This is
             typically ``{}``. For no schema, ``None``.
@@ -550,6 +563,8 @@ class IndividualTable(BaseTable, MetadataMixin):
         the table will contain.
         The ``location`` and ``location_offset`` parameters must be supplied
         together, and meet the requirements for :ref:`sec_encoding_ragged_columns`.
+        The ``parents`` and ``parents_offset`` parameters must be supplied
+        together, and meet the requirements for :ref:`sec_encoding_ragged_columns`.
         The ``metadata`` and ``metadata_offset`` parameters must be supplied
         together, and meet the requirements for :ref:`sec_encoding_ragged_columns`.
         See :ref:`sec_tables_api_binary_columns` for more information and
@@ -563,6 +578,12 @@ class IndividualTable(BaseTable, MetadataMixin):
         :type location: numpy.ndarray, dtype=np.float64
         :param location_offset: The offsets into the ``location`` array.
         :type location_offset: numpy.ndarray, dtype=np.uint32.
+        :param parents: The flattened parents array. Must be specified along
+            with ``parents_offset``. If not specified or None, an empty parents array
+            is stored for each individual.
+        :type parents: numpy.ndarray, dtype=np.int32
+        :param parents_offset: The offsets into the ``parents`` array.
+        :type parents_offset: numpy.ndarray, dtype=np.uint32.
         :param metadata: The flattened metadata array. Must be specified along
             with ``metadata_offset``. If not specified or None, an empty metadata
             value is stored for each individual.
@@ -601,6 +622,8 @@ class IndividualTable(BaseTable, MetadataMixin):
 
         The ``flags`` array is mandatory and defines the number of
         extra individuals to add to the table.
+        The ``parents`` and ``parents_offset`` parameters must be supplied
+        together, and meet the requirements for :ref:`sec_encoding_ragged_columns`.
         The ``location`` and ``location_offset`` parameters must be supplied
         together, and meet the requirements for :ref:`sec_encoding_ragged_columns`.
         The ``metadata`` and ``metadata_offset`` parameters must be supplied
@@ -619,6 +642,11 @@ class IndividualTable(BaseTable, MetadataMixin):
         :param metadata: The flattened metadata array. Must be specified along
             with ``metadata_offset``. If not specified or None, an empty metadata
             value is stored for each individual.
+        :param parents: The flattened parents array. Must be specified along
+            with ``parents_offset``. If not specified or None, an empty parents array
+            is stored for each individual.
+        :type parents: numpy.ndarray, dtype=np.int32
+        :param parents_offset: The offsets into the ``parents`` array.
         :type metadata: numpy.ndarray, dtype=np.int8
         :param metadata_offset: The offsets into the ``metadata`` array.
         :type metadata_offset: numpy.ndarray, dtype=np.uint32.
@@ -649,6 +677,21 @@ class IndividualTable(BaseTable, MetadataMixin):
         d = self.asdict()
         d["location"] = packed
         d["location_offset"] = offset
+        self.set_columns(**d)
+
+    def packset_parents(self, parents):
+        """
+        Packs the specified list of parent values and updates the ``parent``
+        and ``parent_offset`` columns. The length of the parents array
+        must be equal to the number of rows in the table.
+
+        :param list parents: A list of list of parent ids, interpreted as numpy int32
+            arrays.
+        """
+        packed, offset = util.pack_arrays(parents, np.int32)
+        d = self.asdict()
+        d["parents"] = packed
+        d["parents_offset"] = offset
         self.set_columns(**d)
 
 
@@ -2213,7 +2256,7 @@ class TableCollection:
         map of table names to the tables themselves was returned.
         """
         ret = {
-            "encoding_version": (1, 2),
+            "encoding_version": (1, 3),
             "sequence_length": self.sequence_length,
             "metadata_schema": repr(self.metadata_schema),
             "metadata": self.metadata_schema.encode_row(self.metadata),
@@ -2498,9 +2541,11 @@ class TableCollection:
         :param bool keep_unary: If True, any unary nodes (i.e. nodes with exactly
             one child) that exist on the path from samples to root will be preserved
             in the output. (Default: False)
-        :param bool keep_input_roots: If True, insert edges from the MRCAs of the
-            samples to the roots in the input trees. If False, no topology older
-            than the MRCAs of the samples will be included. (Default: False)
+        :param bool keep_input_roots: Whether to retain history ancestral to the
+            MRCA of the samples. If ``False``, no topology older than the MRCAs of the
+            samples will be included. If ``True`` the roots of all trees in the returned
+            tree sequence will be the same roots as in the original tree sequence.
+            (Default: False)
         :param bool record_provenance: If True, record details of this call to
             simplify in the returned tree sequence's provenance information
             (Default: True).
@@ -2641,10 +2686,49 @@ class TableCollection:
         currently rearrange tables so that mutations occur after their mutation parents,
         which is a requirement for valid tree sequences.
 
+        Migrations are sorted by ``time``, ``source``, ``dest``, ``left`` and
+        ``node`` values. This defines a total sort order, such that any permutation
+        of a valid migration table will be sorted into the same output order.
+        Note that this sorting order exceeds the
+        :ref:`migration sorting requirements <sec_migration_requirements>` for a
+        valid tree sequence, which only requires that migrations are sorted by
+        time value.
+
         :param int edge_start: The index in the edge table where sorting starts
             (default=0; must be <= len(edges)).
         """
         self._ll_tables.sort(edge_start)
+        # TODO add provenance
+
+    def canonicalise(self, remove_unreferenced=None):
+        """
+        This puts the tables in *canonical* form - to do this, the individual
+        and population tables are sorted by the first node that refers to each
+        (see :meth:`TreeSequence.subset`) Then, the remaining tables are sorted
+        as in :meth:`.sort`, with the modification that mutations are sorted by
+        site, then time, then number of descendant mutations (ensuring that
+        parent mutations occur before children), then node, then original order
+        in the tables. This ensures that any two tables with the same
+        information should be identical after canonical sorting.
+
+        By default, the method removes sites, individuals, and populations that
+        are not referenced (by mutations and nodes, respectively). If you wish
+        to keep these, pass ``remove_unreferenced=False``, but note that
+        unreferenced individuals and populations are put at the end of the tables
+        in their original order.
+
+        .. seealso::
+
+            :meth:`.sort` for sorting edges, mutations, and sites, and
+            :meth:`.subset` for reordering nodes, individuals, and populations.
+
+        :param bool remove_unreferenced: Whether to remove unreferenced sites,
+            individuals, and populations (default=True).
+        """
+        remove_unreferenced = (
+            True if remove_unreferenced is None else remove_unreferenced
+        )
+        self._ll_tables.canonicalise(remove_unreferenced=remove_unreferenced)
         # TODO add provenance
 
     def compute_mutation_parents(self):
@@ -2694,6 +2778,9 @@ class TableCollection:
         duplicate ``position`` (and keeping only the *first* entry for each
         site), and renumbering the ``site`` column of the mutation table
         appropriately.  This requires the site table to be sorted by position.
+
+        .. warning:: This method does not sort the tables afterwards, so
+            mutations may no longer be sorted by time.
         """
         self._ll_tables.deduplicate_sites()
         # TODO add provenance
@@ -2970,20 +3057,45 @@ class TableCollection:
         """
         self._ll_tables.drop_index()
 
-    def subset(self, nodes, record_provenance=True):
+    def subset(
+        self,
+        nodes,
+        record_provenance=True,
+        *,
+        reorder_populations=None,
+        remove_unreferenced=None,
+    ):
         """
         Modifies the tables in place to contain only the entries referring to
-        the provided list of nodes, with nodes reordered according to the order
-        they appear in the list. See :meth:`TreeSequence.subset` for a more
-        detailed description.
+        the provided list of node IDs, with nodes reordered according to the
+        order they appear in the list. See :meth:`TreeSequence.subset` for a
+        more detailed description.
+
+        Note: there are no sortedness requirements on the tables.
 
         :param list nodes: The list of nodes for which to retain information. This
             may be a numpy array (or array-like) object (dtype=np.int32).
         :param bool record_provenance: Whether to record a provenance entry
             in the provenance table for this operation.
+        :param bool reorder_populations: Whether to reorder the population table
+            (default: True).  If False, the population table will not be altered
+            in any way.
+        :param bool remove_unreferenced: Whether sites, individuals, and populations
+            that are not referred to by any retained entries in the tables should
+            be removed (default: True). See the description for details.
         """
+        reorder_populations = (
+            True if reorder_populations is None else reorder_populations
+        )
+        remove_unreferenced = (
+            True if remove_unreferenced is None else remove_unreferenced
+        )
         nodes = util.safe_np_int_cast(nodes, np.int32)
-        self._ll_tables.subset(nodes)
+        self._ll_tables.subset(
+            nodes,
+            reorder_populations=reorder_populations,
+            remove_unreferenced=remove_unreferenced,
+        )
         if record_provenance:
             parameters = {"command": "subset", "nodes": nodes.tolist()}
             self.provenances.add_row(

@@ -4,6 +4,9 @@
 
 **Features**
 
+- Add ``parents`` column to the individual table to allow recording of pedigrees
+  (:user:`ivan-krukov`, :user:`benjeffery`, :issue:`852`, :pr:`1125`, :pr:`866`, :pr:`1153`, :pr:`1177`).
+
 - Added ``Tree.generate_random_binary`` static method to create random
   binary trees (:user:`hyanwong`, :user:`jeromekelleher`, :pr:`1037`).
 
@@ -17,6 +20,13 @@
 
 - ``default`` in metadata schemas is used to fill in missing values when encoding for
   the struct codec. (:user:`benjeffery`, :issue:`1073`, :pr:`1116`).
+
+- Added ``canonical`` option to table collection sorting (:user:`mufernando`,
+  :user:`petrelharp`, :issue:`705`)
+
+- Added various arguments to ``TreeSequence.subset``, to allow for stable
+  population indexing and lossless node reordering with subset.
+  (:user:`petrelharp`, :pr:`1097`)
 
 --------------------
 [0.3.4] - 2020-12-02

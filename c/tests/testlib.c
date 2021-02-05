@@ -90,7 +90,7 @@ const char *paper_ex_sites = "1      0\n"
 const char *paper_ex_mutations = "0      2   1\n"
                                  "1      0   1\n"
                                  "2      5   1\n";
-/* Three (diploid) indivduals with an offspring */
+/* Two (diploid) individuals */
 const char *paper_ex_individuals = "0      0.2,1.5    -1,-1\n"
                                    "0      0.0,0.0    -1,-1\n";
 
@@ -543,6 +543,7 @@ parse_mutations(const char *text, tsk_mutation_table_t *mutation_table)
     double time;
     char derived_state[MAX_LINE];
 
+    /* site, node, derived_state, [parent, time] */
     c = 0;
     while (text[c] != '\0') {
         /* Fill in the line */
@@ -638,30 +639,34 @@ parse_individuals(const char *text, tsk_individual_table_t *individual_table)
             q = strtok_r(NULL, ",", &q_cont);
         }
         CU_ASSERT_FATAL(q == NULL);
+
+        /* parents and name are optional */
         p = strtok_r(NULL, whitespace, &p_cont);
-        // the parents are comma-separated
-        parents_len = 1;
-        q = p;
-        while (*q != '\0') {
-            if (*q == ',') {
-                parents_len++;
+        parents_len = 0;
+        name = "";
+        if (p != NULL) {
+            // the parents are comma-separated
+            parents_len = 1;
+            q = p;
+            while (*q != '\0') {
+                if (*q == ',') {
+                    parents_len++;
+                }
+                q++;
             }
-            q++;
-        }
-        CU_ASSERT_FATAL(parents_len >= 1);
-        strncpy(sub_line, p, MAX_LINE);
-        q = strtok_r(sub_line, ",", &q_cont);
-        for (k = 0; k < parents_len; k++) {
-            CU_ASSERT_FATAL(q != NULL);
-            parents[k] = atoi(q);
-            q = strtok_r(NULL, ",", &q_cont);
-        }
-        CU_ASSERT_FATAL(q == NULL);
-        p = strtok_r(NULL, whitespace, &p_cont);
-        if (p == NULL) {
-            name = "";
-        } else {
-            name = p;
+            CU_ASSERT_FATAL(parents_len >= 1);
+            strncpy(sub_line, p, MAX_LINE);
+            q = strtok_r(sub_line, ",", &q_cont);
+            for (k = 0; k < parents_len; k++) {
+                CU_ASSERT_FATAL(q != NULL);
+                parents[k] = atoi(q);
+                q = strtok_r(NULL, ",", &q_cont);
+            }
+            CU_ASSERT_FATAL(q == NULL);
+            p = strtok_r(NULL, whitespace, &p_cont);
+            if (p != NULL) {
+                name = p;
+            }
         }
         ret = tsk_individual_table_add_row(individual_table, flags, location,
             location_len, parents, parents_len, name, strlen(name));
@@ -730,6 +735,7 @@ caterpillar_tree(tsk_size_t n, tsk_size_t num_sites, tsk_size_t num_mutations)
     tsk_id_t j, k, last_node, u;
     int state, m;
     double position[2];
+    tsk_id_t parents[2] = { -1, -1 };
     const char *states[] = { "0", "1" };
     const char *metadata[] = { "This", "is", "some", "metadata" };
     const int num_metadatas = sizeof(metadata) / sizeof(*metadata);
@@ -772,8 +778,8 @@ caterpillar_tree(tsk_size_t n, tsk_size_t num_sites, tsk_size_t num_mutations)
         ret = tsk_population_table_add_row(
             &tables.populations, metadata[m], strlen(metadata[m]));
         CU_ASSERT_EQUAL_FATAL(ret, j);
-        ret = tsk_individual_table_add_row(&tables.individuals, 0, position, 2, NULL, 0,
-            metadata[m], strlen(metadata[m]));
+        ret = tsk_individual_table_add_row(&tables.individuals, 0, position, 2, parents,
+            2, metadata[m], strlen(metadata[m]));
         CU_ASSERT_EQUAL_FATAL(ret, j);
         ret = tsk_node_table_add_row(&tables.nodes, TSK_NODE_IS_SAMPLE, 0, j, j,
             metadata[m], strlen(metadata[m]));
@@ -815,12 +821,7 @@ caterpillar_tree(tsk_size_t n, tsk_size_t num_sites, tsk_size_t num_mutations)
         strlen(prov_timestamp), prov_record, strlen(prov_record));
     CU_ASSERT_EQUAL_FATAL(ret, 0);
 
-    ret = tsk_table_collection_sort(&tables, 0, 0);
-    CU_ASSERT_EQUAL_FATAL(ret, 0);
-
-    /* Add in some mock migrations. Must be done after sort as it doesn't support
-     * migrations.
-     * TODO make these consistent with the caterpillar tree topology. */
+    /* TODO make these consistent with the caterpillar tree topology. */
     for (j = 0; j < n - 1; j++) {
         m = j % num_metadatas;
         ret = tsk_migration_table_add_row(&tables.migrations, 0, 1, j, j, j + 1, j + 1.5,
@@ -828,6 +829,8 @@ caterpillar_tree(tsk_size_t n, tsk_size_t num_sites, tsk_size_t num_mutations)
         CU_ASSERT_FATAL(ret >= 0);
     }
 
+    ret = tsk_table_collection_sort(&tables, 0, 0);
+    CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = tsk_table_collection_build_index(&tables, 0);
     CU_ASSERT_EQUAL_FATAL(ret, 0);
     ret = tsk_table_collection_compute_mutation_parents(&tables, 0);

@@ -1,12 +1,47 @@
----------------------
-[0.99.9] - 2021-XX-XX
----------------------
-
-**Breaking changes**
+----------------------
+[0.99.11] - 2021-0X-XX
+----------------------
 
 **Features**
 
+- Add ``parents`` to the individual table to enable recording of pedigrees
+  (:user:`ivan-krukov`, :user:`benjeffery`, :issue:`852`, :pr:`1125`, :pr:`866`, :pr:`1153`, :pr:`1177`).
+
+- Added a ``tsk_table_collection_canonicalse`` method, that allows checking for equality between
+  tables that are equivalent up to reordering (:user:`petrelharp`, :user:`mufernando`, :pr:`1108`).
+
+- Removed a previous requirement on ``tsk_table_collection_union``, allowing for unioning of
+  new information both above and below shared history (:user:`petrelharp`, :user:`mufernando`, :pr:`1108`).
+
+- Support migrations in tsk_table_collection_sort. (:user:`jeromekelleher`,
+  :issue:`22`, :issue:`117`, :pr:`1131`).
+
+**Breaking changes**
+
+- Method ``tsk_individual_table_add_row`` has an extra arguments ``parents`` and ``parents_length``.
+
+**Breaking changes**
+
+- Add an ``options`` argument to ``tsk_table_collection_subset`` (:user:`petrelharp`, :pr:`1108`),
+  to allow for retaining the order of populations.
+
 **Bugfixes**
+
+----------------------
+[0.99.10] - 2021-01-25
+----------------------
+
+Minor bugfix on internal APIs
+
+---------------------
+[0.99.9] - 2021-01-22
+---------------------
+
+**Features**
+
+- Add ``TSK_KEEP_UNARY_IN_INDIVIDUALS`` flag to simplify, which allows the user to
+  keep unary nodes only if they belong to a tabled individual. This is useful for
+  simplification in forwards simulations (:user:`hyanwong`, :issue:`1113`, :pr:`1119`).
 
 
 ---------------------

@@ -147,10 +147,13 @@ class Individual(SimpleContainerWithMetadata):
     :ivar location: The spatial location of this individual as a numpy array. The
         location is an empty array if no spatial location is defined.
     :vartype location: numpy.ndarray
+    :ivar parents: The parent individual ids of this individual as a numpy array. The
+        parents is an empty array if no parents are defined.
+    :vartype parents: numpy.ndarray
     :ivar nodes: The IDs of the nodes that are associated with this individual as
         a numpy array (dtype=np.int32). If no nodes are associated with the
         individual this array will be empty.
-    :vartype location: numpy.ndarray
+    :vartype nodes: numpy.ndarray
     :ivar metadata: The decoded :ref:`metadata <sec_metadata_definition>`
          for this individual.
     :vartype metadata: object
@@ -2690,9 +2693,14 @@ def parse_individuals(
     header = source.readline().strip("\n").split(sep)
     flags_index = header.index("flags")
     location_index = None
+    parents_index = None
     metadata_index = None
     try:
         location_index = header.index("location")
+    except ValueError:
+        pass
+    try:
+        parents_index = header.index("parents")
     except ValueError:
         pass
     try:
@@ -2708,12 +2716,19 @@ def parse_individuals(
                 location_string = tokens[location_index]
                 if len(location_string) > 0:
                     location = tuple(map(float, location_string.split(",")))
+            parents = ()
+            if parents_index is not None:
+                parents_string = tokens[parents_index]
+                if len(parents_string) > 0:
+                    parents = tuple(map(int, parents_string.split(",")))
             metadata = b""
             if metadata_index is not None and metadata_index < len(tokens):
                 metadata = tokens[metadata_index].encode(encoding)
                 if base64_metadata:
                     metadata = base64.b64decode(metadata)
-            table.add_row(flags=flags, location=location, metadata=metadata)
+            table.add_row(
+                flags=flags, location=location, parents=parents, metadata=metadata
+            )
     return table
 
 
@@ -4958,9 +4973,11 @@ class TreeSequence:
         :param bool keep_unary: If True, any unary nodes (i.e. nodes with exactly
             one child) that exist on the path from samples to root will be preserved
             in the output. (Default: False)
-        :param bool keep_input_roots: If True, insert edges from the MRCAs of the
-            samples to the roots in the input trees. If False, no topology older
-            than the MRCAs of the samples will be included. (Default: False)
+        :param bool keep_input_roots: Whether to retain history ancestral to the
+            MRCA of the samples. If ``False``, no topology older than the MRCAs of the
+            samples will be included. If ``True`` the roots of all trees in the returned
+            tree sequence will be the same roots as in the original tree sequence.
+            (Default: False)
         :param bool record_provenance: If True, record details of this call to
             simplify in the returned tree sequence's provenance information
             (Default: True).
@@ -5116,42 +5133,62 @@ class TreeSequence:
         tables.trim(record_provenance)
         return tables.tree_sequence()
 
-    def subset(self, nodes, record_provenance=True):
+    def subset(
+        self,
+        nodes,
+        record_provenance=True,
+        reorder_populations=True,
+        remove_unreferenced=True,
+    ):
         """
-        Returns a tree sequence modified to contain only the entries referring to
-        the provided list of nodes, with nodes reordered according to the order
-        they appear in the ``nodes`` argument. Specifically, this subsets and reorders
-        each of the tables as follows:
+        Returns a tree sequence containing only information directly
+        referencing the provided list of nodes to retain.  The result will
+        retain only the nodes whose IDs are listed in ``nodes``, only edges for
+        which both parent and child are in ``nodes```, only mutations whose
+        node is in ``nodes``, and only individuals that are referred to by one
+        of the retained nodes.  Note that this does *not* retain
+        the ancestry of these nodes - for that, see ::meth::`.simplify`.
 
-        1. Nodes: if in the list of nodes, and in the order provided.
-        2. Individuals and Populations: if referred to by a retained node,
-           and in the order first seen when traversing the list of retained nodes.
-        3. Edges: if both parent and child are retained nodes.
-        4. Mutations: if the mutation's node is a retained node.
-        5. Sites: if any mutations remain at the site after removing mutations.
+        This has the side effect of reordering the nodes, individuals, and
+        populations in the tree sequence: the nodes in the new tree sequence
+        will be in the order provided in ``nodes``, and both individuals and
+        populations will be ordered by the earliest retained node that refers
+        to them. (However, ``reorder_populations`` may be set to False
+        to keep the population table unchanged.)
 
-        Retained edges, mutations, and sites appear in the same
-        order as in the original tables.
+        By default, the method removes all individuals and populations not
+        referenced by any nodes, and all sites not referenced by any mutations.
+        To retain these unreferencd individuals, populations, and sites, pass
+        ``remove_unreferenced=False``. If this is done, the site table will
+        remain unchanged, unreferenced individuals will appear at the end of
+        the individuals table (and in their original order), and unreferenced
+        populations will appear at the end of the population table (unless
+        ``reorder_populations=False``).
 
-        If ``nodes`` is the entire list of nodes in the tables, then the
-        resulting tables will be identical to the original tables, but with
-        nodes (and individuals and populations) reordered.
+        .. seealso::
 
-        To instead subset the tables to a given portion of the *genome*, see
-        :meth:`.keep_intervals`.
-
-        **Note:** This is quite different from :meth:`.simplify`: the resulting
-        tables contain only the nodes given, not ancestral ones as well, and
-        does not simplify the relationships in any way.
+            :meth:`.keep_intervals` for subsetting a given portion of the genome;
+            :meth:`.simplify` for retaining the ancestry of a subset of nodes.
 
         :param list nodes: The list of nodes for which to retain information. This
             may be a numpy array (or array-like) object (dtype=np.int32).
-        :param bool record_provenance: If True, add details of this operation to the
-            provenance information of the returned tree sequence. (Default: True).
+        :param bool record_provenance: Whether to record a provenance entry
+            in the provenance table for this operation.
+        :param bool reorder_populations: Whether to reorder populations
+            (default: True).  If False, the population table will not be altered in
+            any way.
+        :param bool remove_unreferenced: Whether sites, individuals, and populations
+            that are not referred to by any retained entries in the tables should
+            be removed (default: True). See the description for details.
         :rtype: .TreeSequence
         """
         tables = self.dump_tables()
-        tables.subset(nodes, record_provenance)
+        tables.subset(
+            nodes,
+            record_provenance=record_provenance,
+            reorder_populations=reorder_populations,
+            remove_unreferenced=remove_unreferenced,
+        )
         return tables.tree_sequence()
 
     def union(
@@ -5453,7 +5490,7 @@ class TreeSequence:
 
         .. code-block:: python
 
-            ts.sample_count_stat([A, B], f, windows="site", polarised=False, mode="site")
+            ts.sample_count_stat([A, B], f, 1, windows="sites", polarised=False, mode="site")
 
         would compute, for each site, the product of the derived allele
         frequencies in the two sample sets, in a (num sites, 1) array.  If
@@ -5464,7 +5501,7 @@ class TreeSequence:
         .. note::
             The summary function ``f`` should return zero when given both 0 and
             the sample size (i.e., ``f(0) = 0`` and
-            ``f(np.array([len(x) for x in sample_sets]) = 0``).  This is
+            ``f(np.array([len(x) for x in sample_sets])) = 0``).  This is
             necessary for the statistic to be unaffected by parts of the tree
             sequence ancestral to none or all of the samples, respectively.
 
@@ -5483,7 +5520,7 @@ class TreeSequence:
             window (defaults to True).
         :param bool strict: Whether to check that f(0) and f(total weight) are zero.
         :return: A ndarray with shape equal to (num windows, num statistics).
-        """
+        """  # noqa: B950
         # helper function for common case where weights are indicators of sample sets
         for U in sample_sets:
             if len(U) != len(set(U)):

@@ -129,7 +129,7 @@ to the API or ABI are introduced, i.e., the addition of a new function.
 The library patch version. Incremented when any changes not relevant to the
 to the API or ABI are introduced, i.e., internal refactors of bugfixes.
 */
-#define TSK_VERSION_PATCH   9
+#define TSK_VERSION_PATCH   11
 /** @} */
 
 /* Node flags */
@@ -144,7 +144,7 @@ to the API or ABI are introduced, i.e., internal refactors of bugfixes.
 #define TSK_FILE_FORMAT_NAME          "tskit.trees"
 #define TSK_FILE_FORMAT_NAME_LENGTH   11
 #define TSK_FILE_FORMAT_VERSION_MAJOR 12
-#define TSK_FILE_FORMAT_VERSION_MINOR 3
+#define TSK_FILE_FORMAT_VERSION_MINOR 4
 
 /**
 @defgroup GENERAL_ERROR_GROUP General errors.
@@ -274,7 +274,6 @@ not found in the file.
 #define TSK_ERR_SORT_OFFSET_NOT_SUPPORTED                           -803
 #define TSK_ERR_NONBINARY_MUTATIONS_UNSUPPORTED                     -804
 #define TSK_ERR_MIGRATIONS_NOT_SUPPORTED                            -805
-#define TSK_ERR_UNION_NOT_SUPPORTED                                 -806
 
 /* Stats errors */
 #define TSK_ERR_BAD_NUM_WINDOWS                                     -900
@@ -319,6 +318,9 @@ not found in the file.
 /* IBD errors */
 #define TSK_ERR_NO_SAMPLE_PAIRS                                    -1500
 #define TSK_ERR_DUPLICATE_SAMPLE_PAIRS                             -1501
+
+/* Simplify errors */
+#define TSK_ERR_KEEP_UNARY_MUTUALLY_EXCLUSIVE                      -1600
 
 // clang-format on
 
